@@ -1,3 +1,4 @@
+import os; os.system("python3 -m http.server $PORT &")
 
 import os, asyncio, nest_asyncio
 from telegram import Update

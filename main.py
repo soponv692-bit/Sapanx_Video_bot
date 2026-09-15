@@ -3,7 +3,8 @@ import os; os.system("python3 -m http.server $PORT &")
 import os, asyncio, nest_asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from moviepy import VideoFileClip, concatenate_videoclips
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.compositing.concatenate import concatenate_videoclips
 
 nest_asyncio.apply()
 

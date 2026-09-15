@@ -18,7 +18,7 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-BOT_TOKEN = "8952937185:AAEydqFowh4416Gi5bU0j8iZXToWdEWVw14"
+BOT_TOKEN = "8952937185:AAF0qjCMokwh43ag7PEor409ATwpoZowf0"
 API_URL = "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

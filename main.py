@@ -1,77 +1,60 @@
-import os; os.system("python3 -m http.server $PORT &")
-
-import os, asyncio, nest_asyncio
+import os
+import time
+import requests
+import asyncio
+import nest_asyncio
+import threading
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.compositing.concatenate import concatenate_videoclips
 
 nest_asyncio.apply()
 
-BOT_TOKEN = "8952937185:AAEydqFowh44l6GiSbU0j8iZ3XToWdEVW14"
+# Render Web Service PORT binding
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    server.serve_forever()
 
-def make_progress_bar(percent):
-    done = int(percent / 10)
-    return "█" * done + "░" * (10 - done)
+threading.Thread(target=run_dummy_server, daemon=True).start()
+
+BOT_TOKEN = "8952937185:AAEydqFowh4416Gi5bU0j8iZXToWdEWVw14"
+API_URL = "https://api-inference.huggingface.co/models/damo-vilab/text-to-video-ms-1.7b"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = "🎬 **Sapanx Video Engine Bot**-এ স্বাগতম!\n📥 যেকোনো ভিডিও ফাইল পাঠালে ৩ সেকেন্ডের সেগমেন্টে এডিট হবে।"
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+    await update.message.reply_text("👋 স্বাগতম! আমাকে কোনো ইংরেজি প্রম্পট লিখে পাঠান, আমি AI ভিডিও বানিয়ে দেব।")
 
-async def process_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.message.reply_text("⚡ **এডিটিং শুরু হচ্ছে...**", parse_mode="Markdown")
-    
+async def generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = update.message.text
+    status_msg = await update.message.reply_text("🎬 আপনার প্রম্পট থেকে AI ভিডিও তৈরি হচ্ছে... ১-২ মিনিট সময় দিন।")
+
     try:
-        video_file = await update.message.video.get_file()
-        input_path = "user_input.mp4"
-        await video_file.download_to_drive(input_path)
+        response = requests.post(API_URL, json={"inputs": prompt})
         
-        clip = VideoFileClip(input_path)
-        total_duration = int(clip.duration)
-        chunk_duration = 3
-        chunks = []
-        
-        for i in range(0, total_duration, chunk_duration):
-            sub_clip = clip.subclip(i, min(i + chunk_duration, total_duration))
-            chunk_filename = f"chunk_{i}.mp4"
-            sub_clip.write_videofile(chunk_filename, codec="libx264", audio=False, verbose=False, logger=None)
-            chunks.append(chunk_filename)
-        
-        clip.close()
-        
-        processed_clips = [VideoFileClip(c) for c in chunks]
-        final_clip = concatenate_videoclips(processed_clips)
-        
-        output_path = "final_output.mp4"
-        final_clip.write_videofile(output_path, codec="libx264", verbose=False, logger=None)
-        
-        for c in processed_clips:
-            c.close()
-        final_clip.close()
-        
-        await context.bot.send_video(
-            chat_id=update.effective_chat.id,
-            video=open(output_path, 'rb'),
-            caption="✅ **ভিডিও প্রসেসিং সফল হয়েছে!**",
-            parse_mode="Markdown"
-        )
-        
-        os.remove(input_path)
-        os.remove(output_path)
-        for c in chunks:
-            if os.path.exists(c):
-                os.remove(c)
-                
-        await status_msg.delete()
+        if response.status_code == 503:
+            await status_msg.edit_text("⏳ AI মডেল চালু হচ্ছে... ৩০ সেকেন্ড পর অটো রিট্রাই করা হচ্ছে।")
+            time.sleep(30)
+            response = requests.post(API_URL, json={"inputs": prompt})
+
+        if response.status_code == 200:
+            with open("generated_video.mp4", "wb") as f:
+                f.write(response.content)
+            
+            await status_msg.edit_text("✅ ভিডিও তৈরি শেষ! পাঠাচ্ছি...")
+            await update.message.reply_video(video=open("generated_video.mp4", "rb"), caption=f"Prompt: {prompt}")
+            os.remove("generated_video.mp4")
+        else:
+            await status_msg.edit_text(f"❌ ভিডিও তৈরিতে সমস্যা হয়েছে। সার্ভার স্ট্যাটাস: {response.status_code}")
 
     except Exception as e:
-        print(f"Error: {e}")
-        await status_msg.edit_text("❌ **ভিডিও প্রসেস করতে সমস্যা হয়েছে!**")
+        await status_msg.edit_text(f"❌ এরর: {str(e)}")
 
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.VIDEO, process_video))
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generate_video))
+    app.run_polling()
 
 if __name__ == "__main__":
-    print("🤖 Sapanx Video Bot v2.0 রানিং আছে...")
-    app.run_polling(drop_pending_updates=True)
+    main()
+    
